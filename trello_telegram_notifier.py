@@ -25,13 +25,69 @@ MORNING_HOUR = 8                 # 8 AM local time
 WINDOW_MINUTES = 20              # how long a checkpoint stays "firable" after it passes
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
 
-TRELLO_KEY = os.environ["TRELLO_KEY"]
-TRELLO_TOKEN = os.environ["TRELLO_TOKEN"]
-TRELLO_BOARD_ID = os.environ["TRELLO_BOARD_ID"]
-TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-
 TZ = ZoneInfo(TIMEZONE)
+
+LABELS = {
+    "day_before_8am": "Due tomorrow",
+    "same_day_8am": "Due today",
+    "30min_before": "Due in 30 minutes",
+}
+
+
+class TrelloClient:
+    def __init__(self, key, token, board_id):
+        self._key = key
+        self._token = token
+        self._board_id = board_id
+
+    def fetch_due_cards(self):
+        url = f"https://api.trello.com/1/boards/{self._board_id}/cards"
+        params = {
+            "key": self._key,
+            "token": self._token,
+            "filter": "open",
+            "fields": "name,due,dueComplete,shortUrl",
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return [c for c in resp.json() if c.get("due") and not c.get("dueComplete")]
+
+    def fetch_self_member_id(self):
+        url = "https://api.trello.com/1/members/me"
+        params = {"key": self._key, "token": self._token, "fields": "id"}
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return resp.json()["id"]
+
+    def fetch_actions_since(self, cursor):
+        """Return board actions newer than `cursor` (an Action id), oldest first."""
+        url = f"https://api.trello.com/1/boards/{self._board_id}/actions"
+        params = {
+            "key": self._key,
+            "token": self._token,
+            "filter": "createCard,updateCard,commentCard",
+            "limit": 1000,
+        }
+        if cursor is not None:
+            params["since"] = cursor
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return list(reversed(resp.json()))  # Trello returns newest first
+
+
+class TelegramClient:
+    def __init__(self, bot_token, chat_id):
+        self._bot_token = bot_token
+        self._chat_id = chat_id
+
+    def send(self, text):
+        url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+        resp = requests.post(
+            url,
+            data={"chat_id": self._chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=15,
+        )
+        resp.raise_for_status()
 
 
 def load_state():
@@ -44,29 +100,6 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
-
-
-def fetch_due_cards():
-    url = f"https://api.trello.com/1/boards/{TRELLO_BOARD_ID}/cards"
-    params = {
-        "key": TRELLO_KEY,
-        "token": TRELLO_TOKEN,
-        "filter": "open",
-        "fields": "name,due,dueComplete,shortUrl",
-    }
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
-    return [c for c in resp.json() if c.get("due") and not c.get("dueComplete")]
-
-
-def send_telegram(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    resp = requests.post(
-        url,
-        data={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
-        timeout=15,
-    )
-    resp.raise_for_status()
 
 
 def checkpoints_for_due(due_local):
@@ -84,24 +117,16 @@ def checkpoints_for_due(due_local):
     return cps
 
 
-LABELS = {
-    "day_before_8am": "Due tomorrow",
-    "same_day_8am": "Due today",
-    "30min_before": "Due in 30 minutes",
-}
-
-
-def main():
-    now = datetime.now(TZ)
-    state = load_state()
-    cards = fetch_due_cards()
+def _process_due_soon(trello, telegram, state, now):
+    cards = trello.fetch_due_cards()
     current_ids = {c["id"] for c in cards}
     sent = 0
+    checkpoints = state.setdefault("cards", {})
 
     for card in cards:
         card_id = card["id"]
         due_local = datetime.fromisoformat(card["due"].replace("Z", "+00:00")).astimezone(TZ)
-        card_state = state.setdefault(card_id, {})
+        card_state = checkpoints.setdefault(card_id, {})
 
         for key, cp_time in checkpoints_for_due(due_local).items():
             already_sent = card_state.get(key, False)
@@ -113,17 +138,99 @@ def main():
                     f"Due: {due_local.strftime('%b %d, %I:%M %p')}\n"
                     f"{card['shortUrl']}"
                 )
-                send_telegram(text)
+                telegram.send(text)
                 card_state[key] = True
                 sent += 1
 
     # Drop state for cards that are no longer open/due (completed, deleted, etc.)
-    for cid in list(state.keys()):
+    for cid in list(checkpoints.keys()):
         if cid not in current_ids:
-            del state[cid]
+            del checkpoints[cid]
+
+    return sent
+
+
+def _process_logged_events(trello, telegram, state, self_member_id):
+    is_first_run = "action_cursor" not in state
+    cursor = state.get("action_cursor")
+    actions = trello.fetch_actions_since(cursor)
+    sent = 0
+
+    if is_first_run:
+        # Seed the cursor without notifying on the board's pre-existing history.
+        if actions:
+            state["action_cursor"] = actions[-1]["id"]
+        return sent
+
+    for action in actions:
+        if action["memberCreator"]["id"] != self_member_id:
+            card = action["data"]["card"]
+            if action["type"] == "createCard":
+                text = (
+                    f"🆕 <b>Card created</b>\n"
+                    f"{card['name']}\n"
+                    f"https://trello.com/c/{card['shortLink']}"
+                )
+                telegram.send(text)
+                sent += 1
+            elif action["type"] == "updateCard" and "listBefore" in action["data"]:
+                list_before = action["data"]["listBefore"]["name"]
+                list_after = action["data"]["listAfter"]["name"]
+                text = (
+                    f"➡️ <b>Card moved</b>\n"
+                    f"{card['name']}\n"
+                    f"{list_before} → {list_after}\n"
+                    f"https://trello.com/c/{card['shortLink']}"
+                )
+                telegram.send(text)
+                sent += 1
+            elif action["type"] == "commentCard":
+                commenter = action["memberCreator"]["fullName"]
+                text = (
+                    f"💬 <b>New comment</b>\n"
+                    f"{card['name']}\n"
+                    f"{commenter}: {action['data']['text']}\n"
+                    f"https://trello.com/c/{card['shortLink']}"
+                )
+                telegram.send(text)
+                sent += 1
+
+    if actions:
+        state["action_cursor"] = actions[-1]["id"]
+
+    return sent
+
+
+def run(trello, telegram, state, now=None):
+    """Orchestrate a single check: due-soon reminders plus board-activity notifications."""
+    if now is None:
+        now = datetime.now(TZ)
+
+    self_member_id = trello.fetch_self_member_id()
+    state["self_member_id"] = self_member_id
+
+    sent = _process_due_soon(trello, telegram, state, now)
+    sent += _process_logged_events(trello, telegram, state, self_member_id)
+
+    return sent
+
+
+def main():
+    trello = TrelloClient(
+        key=os.environ["TRELLO_KEY"],
+        token=os.environ["TRELLO_TOKEN"],
+        board_id=os.environ["TRELLO_BOARD_ID"],
+    )
+    telegram = TelegramClient(
+        bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
+        chat_id=os.environ["TELEGRAM_CHAT_ID"],
+    )
+    state = load_state()
+
+    sent = run(trello, telegram, state)
 
     save_state(state)
-    print(f"Checked {len(cards)} card(s) with due dates, sent {sent} notification(s).")
+    print(f"Sent {sent} notification(s).")
 
 
 if __name__ == "__main__":
