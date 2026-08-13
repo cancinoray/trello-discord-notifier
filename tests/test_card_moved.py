@@ -9,15 +9,16 @@ NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 
 
 def move_card_action(action_id, member_id, card_name="Ship report",
-                      list_before="Doing", list_after="Done", short_link="abc123"):
+                      list_before="Doing", list_after="Done", short_link="abc123",
+                      list_before_id="list-doing", list_after_id="list-done"):
     return {
         "id": action_id,
         "type": "updateCard",
         "memberCreator": {"id": member_id},
         "data": {
             "card": {"name": card_name, "shortLink": short_link},
-            "listBefore": {"name": list_before},
-            "listAfter": {"name": list_after},
+            "listBefore": {"id": list_before_id, "name": list_before},
+            "listAfter": {"id": list_after_id, "name": list_after},
         },
     }
 
@@ -74,6 +75,39 @@ def test_non_move_update_card_action_does_not_notify():
     )
     telegram = FakeTelegramClient()
     state = {"action_cursor": "action0"}
+
+    run(trello, telegram, state, now=NOW)
+
+    assert telegram.sent == []
+
+
+def test_update_card_with_same_list_before_and_after_does_not_notify():
+    """listBefore/listAfter present but identical (e.g. a card copy within the same list) is not a move."""
+    trello = FakeTrelloClient(
+        cards=[],
+        actions=[move_card_action(
+            "action1", member_id="other-member",
+            list_before="Doing", list_after="Doing",
+            list_before_id="list-doing", list_after_id="list-doing",
+        )],
+        self_member_id="self-member",
+    )
+    telegram = FakeTelegramClient()
+    state = {"action_cursor": "action0"}
+
+    run(trello, telegram, state, now=NOW)
+
+    assert telegram.sent == []
+
+
+def test_already_processed_move_action_is_not_renotified():
+    trello = FakeTrelloClient(
+        cards=[],
+        actions=[move_card_action("action1", member_id="other-member")],
+        self_member_id="self-member",
+    )
+    telegram = FakeTelegramClient()
+    state = {"action_cursor": "action1"}
 
     run(trello, telegram, state, now=NOW)
 

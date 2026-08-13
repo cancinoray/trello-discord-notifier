@@ -150,7 +150,7 @@ def _process_due_soon(trello, telegram, state, now):
     return sent
 
 
-def _process_logged_events(trello, telegram, state, self_member_id):
+def _process_logged_events(trello, telegram, state, self_member_id, now):
     is_first_run = "action_cursor" not in state
     cursor = state.get("action_cursor")
     actions = trello.fetch_actions_since(cursor)
@@ -158,8 +158,10 @@ def _process_logged_events(trello, telegram, state, self_member_id):
 
     if is_first_run:
         # Seed the cursor without notifying on the board's pre-existing history.
-        if actions:
-            state["action_cursor"] = actions[-1]["id"]
+        # Always write a cursor, even with zero actions, so the run no longer
+        # looks like "first run" next time and doesn't swallow future actions.
+        # Trello's `since` param accepts an ISO 8601 datetime as well as an Action id.
+        state["action_cursor"] = actions[-1]["id"] if actions else now.isoformat()
         return sent
 
     for action in actions:
@@ -173,7 +175,11 @@ def _process_logged_events(trello, telegram, state, self_member_id):
                 )
                 telegram.send(text)
                 sent += 1
-            elif action["type"] == "updateCard" and "listBefore" in action["data"]:
+            elif (
+                action["type"] == "updateCard"
+                and "listBefore" in action["data"]
+                and action["data"]["listBefore"]["id"] != action["data"]["listAfter"]["id"]
+            ):
                 list_before = action["data"]["listBefore"]["name"]
                 list_after = action["data"]["listAfter"]["name"]
                 text = (
@@ -210,7 +216,7 @@ def run(trello, telegram, state, now=None):
     state["self_member_id"] = self_member_id
 
     sent = _process_due_soon(trello, telegram, state, now)
-    sent += _process_logged_events(trello, telegram, state, self_member_id)
+    sent += _process_logged_events(trello, telegram, state, self_member_id, now)
 
     return sent
 

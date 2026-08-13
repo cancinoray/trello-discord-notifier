@@ -66,6 +66,29 @@ def test_first_run_seeds_cursor_without_notifying_on_backlog():
     assert state["action_cursor"] == "action2"
 
 
+def test_first_run_with_no_actions_still_seeds_cursor():
+    """A cursor must be written even on an empty first fetch, or every subsequent
+    run keeps looking like 'first run' and silently swallows the next real action."""
+    trello = FakeTrelloClient(cards=[], actions=[], self_member_id="self-member")
+    telegram = FakeTelegramClient()
+    state = {}
+
+    run(trello, telegram, state, now=NOW)
+
+    assert telegram.sent == []
+    assert "action_cursor" in state
+
+    # Second run: a real action shows up and must notify, not be treated as backlog.
+    trello_second_run = FakeTrelloClient(
+        cards=[],
+        actions=[create_card_action("action1", member_id="other-member")],
+        self_member_id="self-member",
+    )
+    run(trello_second_run, telegram, state, now=NOW)
+
+    assert len(telegram.sent) == 1
+
+
 def test_already_processed_action_is_not_renotified():
     trello = FakeTrelloClient(
         cards=[],
