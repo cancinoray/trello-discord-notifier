@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub issues in `cancinoray/trello-telegram-notifier` (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
