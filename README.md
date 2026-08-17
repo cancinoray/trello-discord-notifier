@@ -18,8 +18,8 @@ Every message shows the card as a clickable link, and — if the card has assign
 
 Two ways to run it:
 
-- **GitHub Actions** (polling, every 5 minutes) — free, no server needed. See steps below.
-- **Railway** (webhooks, real-time) — an always-on server that Trello pushes to instantly. See [Real-time on Railway](#real-time-on-railway).
+- **Railway** (webhooks, real-time) — an always-on server that Trello pushes to instantly. See [Real-time on Railway](#real-time-on-railway). **This is the currently deployed setup.**
+- **GitHub Actions** (polling, every 5 minutes) — free, no server needed. See steps below. Kept as documented fallback; its schedule is currently disabled in favor of Railway (`workflow_dispatch` still works for manual runs/testing).
 
 ## 1. Create a Discord webhook
 
@@ -30,7 +30,7 @@ Two ways to run it:
 
 1. Go to [trello.com/power-ups/admin](https://trello.com/power-ups/admin/) (or [trello.com/app-key](https://trello.com/app-key)) while logged in, and click **New** to create an app if you don't have one yet — copy its **API Key**. This is `TRELLO_KEY`.
 2. On the same page, click the link to manually generate a **Token** (grants read access) → copy it. This is `TRELLO_TOKEN`.
-3. Get your board ID: open your board in the browser and grab the ID from the URL (the string after `/b/`), e.g. `trello.com/b/AbCd1234/my-board` → `AbCd1234`. This is `TRELLO_BOARD_ID`.
+3. Get your board ID: open your board in the browser and add `.json` to the end of the URL, then find the `"id"` field near the top — a 24-character string like `6a7d808f927029f4cf5dab57`. This is `TRELLO_BOARD_ID`. **Use this full id, not the short one from the URL itself** (the string after `/b/`, e.g. `AbCd1234`) — the short id works for most API calls but Trello's webhook registration (`register_webhook.py`, used for the Railway setup) rejects it with `invalid value for idModel`.
 
 ## 3. Push this project to GitHub
 
