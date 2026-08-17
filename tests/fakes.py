@@ -22,6 +22,28 @@ class FakeTrelloClient:
         return self._card_members.get(card_id, [])
 
 
+def make_action(action_type, action_id="action1", member_id="other-member",
+                 member_creator=None, card_id="card1", card_name="Ship report",
+                 short_link="abc123", card=None, **extra_data):
+    """Build a Trello Action payload shaped like the Actions API / webhook body.
+
+    `card` overrides the default {id, name, shortLink} card dict entirely, for
+    action types with no card (e.g. createList) — pass card=None explicitly via
+    an action type that doesn't need one, or pass a full replacement dict.
+    Any extra keyword becomes an additional `data` key (e.g. text=..., old=...,
+    member=..., listBefore=..., list=...).
+    """
+    data = dict(extra_data)
+    if card is not False:
+        data["card"] = card or {"id": card_id, "name": card_name, "shortLink": short_link}
+    return {
+        "id": action_id,
+        "type": action_type,
+        "memberCreator": member_creator or {"id": member_id},
+        "data": data,
+    }
+
+
 class FakeDiscordClient:
     """Records embeds sent via send_embed(). `sent` holds a searchable text
     representation of each embed (title + description) so existing tests can

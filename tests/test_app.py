@@ -14,7 +14,7 @@ os.environ.setdefault("DUE_SOON_INTERVAL_SECONDS", "3600")
 from fastapi.testclient import TestClient  # noqa: E402 (must follow STATE_FILE setup above)
 
 import app as app_module  # noqa: E402
-from tests.fakes import FakeDiscordClient, FakeTrelloClient  # noqa: E402
+from tests.fakes import FakeDiscordClient, FakeTrelloClient, make_action  # noqa: E402
 
 
 class RaisingTrelloClient(FakeTrelloClient):
@@ -36,22 +36,13 @@ def make_client(trello=None, discord=None, member_map=None, notifier_state=None)
     return TestClient(app_module.app)
 
 
-def create_card_action(action_id="action1", card_id="card1"):
-    return {
-        "id": action_id,
-        "type": "createCard",
-        "memberCreator": {"id": "member1"},
-        "data": {"card": {"id": card_id, "name": "New card", "shortLink": "abc123"}},
-    }
-
-
 def test_create_card_webhook_notifies_discord():
     discord = FakeDiscordClient()
     trello = FakeTrelloClient(card_members={"card1": []})
     client = make_client(trello=trello, discord=discord)
 
     with client:
-        resp = client.post("/trello-webhook", json={"action": create_card_action()})
+        resp = client.post("/trello-webhook", json={"action": make_action("createCard", member_id="member1", card_name="New card")})
 
     assert resp.status_code == 200
     assert len(discord.sent) == 1
@@ -72,7 +63,7 @@ def test_lifecycle_ping_with_no_action_does_not_notify():
 def test_action_type_outside_allowlist_does_not_notify():
     discord = FakeDiscordClient()
     client = make_client(discord=discord)
-    action = {"id": "action1", "type": "addMemberToCard", "data": {}}
+    action = {"id": "action1", "type": "updateBoard", "data": {}}
 
     with client:
         resp = client.post("/trello-webhook", json={"action": action})
@@ -91,7 +82,7 @@ def test_exception_in_handle_logged_action_is_swallowed_and_returns_200(caplog):
     client = make_client(trello=RaisingTrelloForAction(), discord=discord)
 
     with client, caplog.at_level("ERROR", logger="trello_discord_notifier"):
-        resp = client.post("/trello-webhook", json={"action": create_card_action()})
+        resp = client.post("/trello-webhook", json={"action": make_action("createCard", member_id="member1", card_name="New card")})
 
     assert resp.status_code == 200
     assert discord.sent == []

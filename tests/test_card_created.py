@@ -2,21 +2,17 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from trello_discord_notifier import run
-from tests.fakes import FakeTrelloClient, FakeDiscordClient
+from tests.fakes import FakeTrelloClient, FakeDiscordClient, make_action
 
 TZ = ZoneInfo("Asia/Manila")
 NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 
 
 def create_card_action(action_id, member_id, card_name="New card", short_link="abc123", card_id="card1"):
-    return {
-        "id": action_id,
-        "type": "createCard",
-        "memberCreator": {"id": member_id},
-        "data": {
-            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
-        },
-    }
+    return make_action(
+        "createCard", action_id=action_id, member_id=member_id,
+        card_id=card_id, card_name=card_name, short_link=short_link,
+    )
 
 
 def test_card_created_by_another_member_notifies():

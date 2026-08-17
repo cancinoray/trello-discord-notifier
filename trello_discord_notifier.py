@@ -226,12 +226,53 @@ def _process_due_soon(trello, discord, state, now, member_map=None):
     return sent
 
 
+def classify_update_card(action):
+    """Classify an updateCard action's data.old payload into the Event Type it
+    represents. Trello's action log carries exactly one changed-field delta per
+    updateCard action, so these are checked as mutually exclusive alternatives,
+    in a fixed order: list move, rename, description edit. Returns one of
+    "moved"/"renamed"/"description_updated", or None if the action doesn't
+    match a tracked Event Type (e.g. a due-date or label change)."""
+    data = action["data"]
+    if "listBefore" in data and data["listBefore"]["id"] != data["listAfter"]["id"]:
+        return "moved"
+    old = data.get("old", {})
+    if "name" in old:
+        return "renamed"
+    if "desc" in old:
+        return "description_updated"
+    return None
+
+
+def _notify_card_event(discord, trello, member_map, card, title, detail, color,
+                        heading=None, members=None):
+    """Build the mentions line and send the Discord embed. Shared by every
+    card-shaped Event Type in handle_logged_action. `heading` overrides the
+    default "**{card name}**" first line — used by the rename case, whose
+    "old → new" line already carries the name. `members` overrides the members
+    passed to mentions_line (defaults to the card's assigned members via
+    trello.fetch_card_members) — used by the member-added case, whose mention
+    is the member who was just added, not the card's full assignee list."""
+    card_url = f"https://trello.com/c/{card['shortLink']}"
+    if members is None:
+        members = trello.fetch_card_members(card["id"])
+    mentions = mentions_line(members, member_map)
+    description = heading if heading is not None else f"**{card['name']}**"
+    if detail:
+        description += f"\n{detail}"
+    if mentions:
+        description += f"\n{mentions}"
+    discord.send_embed(title=title, description=description, color=color, url=card_url)
+
+
 def handle_logged_action(trello, discord, action, member_map):
     """Notify Discord for a single Logged Event (createCard/updateCard/commentCard/
     addMemberToCard/createList). Returns True if a notification was sent, False if
     the action was skipped (e.g. an updateCard that wasn't a list move, rename, or
     description edit)."""
-    if action["type"] == "createList":
+    action_type = action["type"]
+
+    if action_type == "createList":
         new_list = action["data"]["list"]
         discord.send_embed(
             title="📋 List created", description=f"**{new_list['name']}**", color=COLOR_LIST_CREATED
@@ -239,71 +280,53 @@ def handle_logged_action(trello, discord, action, member_map):
         return True
 
     card = action["data"]["card"]
-    card_url = f"https://trello.com/c/{card['shortLink']}"
-    if action["type"] == "createCard":
-        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        description = f"**{card['name']}**"
-        if mentions:
-            description += f"\n{mentions}"
-        discord.send_embed(
-            title="🆕 Card created", description=description, color=COLOR_CARD_CREATED, url=card_url
-        )
+
+    if action_type == "createCard":
+        _notify_card_event(discord, trello, member_map, card, "🆕 Card created", None, COLOR_CARD_CREATED)
         return True
-    elif (
-        action["type"] == "updateCard"
-        and "listBefore" in action["data"]
-        and action["data"]["listBefore"]["id"] != action["data"]["listAfter"]["id"]
-    ):
-        list_before = action["data"]["listBefore"]["name"]
-        list_after = action["data"]["listAfter"]["name"]
-        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        description = f"**{card['name']}**\n{list_before} → {list_after}"
-        if mentions:
-            description += f"\n{mentions}"
-        discord.send_embed(
-            title="➡️ Card moved", description=description, color=COLOR_CARD_MOVED, url=card_url
-        )
-        return True
-    elif action["type"] == "updateCard" and "name" in action["data"].get("old", {}):
-        old_name = action["data"]["old"]["name"]
-        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        description = f"**{old_name}** → **{card['name']}**"
-        if mentions:
-            description += f"\n{mentions}"
-        discord.send_embed(
-            title="✏️ Card renamed", description=description, color=COLOR_CARD_UPDATED, url=card_url
-        )
-        return True
-    elif action["type"] == "updateCard" and "desc" in action["data"].get("old", {}):
-        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        description = f"**{card['name']}**\nDescription updated"
-        if mentions:
-            description += f"\n{mentions}"
-        discord.send_embed(
-            title="✏️ Card updated", description=description, color=COLOR_CARD_UPDATED, url=card_url
-        )
-        return True
-    elif action["type"] == "commentCard":
+
+    if action_type == "updateCard":
+        change = classify_update_card(action)
+        if change == "moved":
+            list_before = action["data"]["listBefore"]["name"]
+            list_after = action["data"]["listAfter"]["name"]
+            _notify_card_event(
+                discord, trello, member_map, card, "➡️ Card moved",
+                f"{list_before} → {list_after}", COLOR_CARD_MOVED,
+            )
+            return True
+        if change == "renamed":
+            old_name = action["data"]["old"]["name"]
+            _notify_card_event(
+                discord, trello, member_map, card, "✏️ Card renamed", None, COLOR_CARD_UPDATED,
+                heading=f"**{old_name}** → **{card['name']}**",
+            )
+            return True
+        if change == "description_updated":
+            _notify_card_event(
+                discord, trello, member_map, card, "✏️ Card updated",
+                "Description updated", COLOR_CARD_UPDATED,
+            )
+            return True
+        return False
+
+    if action_type == "commentCard":
         commenter = action["memberCreator"]["fullName"]
-        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        description = f"**{card['name']}**\n{commenter}: {action['data']['text']}"
-        if mentions:
-            description += f"\n{mentions}"
-        discord.send_embed(
-            title="💬 New comment", description=description, color=COLOR_COMMENT_ADDED, url=card_url
+        _notify_card_event(
+            discord, trello, member_map, card, "💬 New comment",
+            f"{commenter}: {action['data']['text']}", COLOR_COMMENT_ADDED,
         )
         return True
-    elif action["type"] == "addMemberToCard":
+
+    if action_type == "addMemberToCard":
         added_member = action["data"]["member"]
         member_for_mention = {"id": added_member["id"], "fullName": added_member["name"]}
-        mentions = mentions_line([member_for_mention], member_map)
-        description = f"**{card['name']}**"
-        if mentions:
-            description += f"\n{mentions}"
-        discord.send_embed(
-            title="👤 Member added", description=description, color=COLOR_MEMBER_ADDED, url=card_url
+        _notify_card_event(
+            discord, trello, member_map, card, "👤 Member added", None, COLOR_MEMBER_ADDED,
+            members=[member_for_mention],
         )
         return True
+
     return False
 
 

@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from trello_discord_notifier import run
-from tests.fakes import FakeTrelloClient, FakeDiscordClient
+from tests.fakes import FakeTrelloClient, FakeDiscordClient, make_action
 
 TZ = ZoneInfo("Asia/Manila")
 NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
@@ -10,16 +10,12 @@ NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 
 def add_member_action(action_id, member_id, added_member_id="jamie", added_member_name="Jamie",
                        card_name="Ship report", short_link="abc123", card_id="card1"):
-    return {
-        "id": action_id,
-        "type": "addMemberToCard",
-        "memberCreator": {"id": member_id},
-        "data": {
-            "idMember": added_member_id,
-            "member": {"id": added_member_id, "name": added_member_name},
-            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
-        },
-    }
+    return make_action(
+        "addMemberToCard", action_id=action_id, member_id=member_id,
+        card_id=card_id, card_name=card_name, short_link=short_link,
+        idMember=added_member_id,
+        member={"id": added_member_id, "name": added_member_name},
+    )
 
 
 def test_member_added_notifies_with_plain_name_when_unmapped():

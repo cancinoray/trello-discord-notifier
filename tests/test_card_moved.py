@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from trello_discord_notifier import run
-from tests.fakes import FakeTrelloClient, FakeDiscordClient
+from tests.fakes import FakeTrelloClient, FakeDiscordClient, make_action
 
 TZ = ZoneInfo("Asia/Manila")
 NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
@@ -11,29 +11,21 @@ NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 def move_card_action(action_id, member_id, card_name="Ship report",
                       list_before="Doing", list_after="Done", short_link="abc123",
                       list_before_id="list-doing", list_after_id="list-done", card_id="card1"):
-    return {
-        "id": action_id,
-        "type": "updateCard",
-        "memberCreator": {"id": member_id},
-        "data": {
-            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
-            "listBefore": {"id": list_before_id, "name": list_before},
-            "listAfter": {"id": list_after_id, "name": list_after},
-        },
-    }
+    return make_action(
+        "updateCard", action_id=action_id, member_id=member_id,
+        card_id=card_id, card_name=card_name, short_link=short_link,
+        listBefore={"id": list_before_id, "name": list_before},
+        listAfter={"id": list_after_id, "name": list_after},
+    )
 
 
 def rename_card_action(action_id, member_id, card_name="Ship report", short_link="abc123", card_id="card1"):
     """An updateCard action that is NOT a list move (e.g. a rename)."""
-    return {
-        "id": action_id,
-        "type": "updateCard",
-        "memberCreator": {"id": member_id},
-        "data": {
-            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
-            "old": {"name": "Ship draft"},
-        },
-    }
+    return make_action(
+        "updateCard", action_id=action_id, member_id=member_id,
+        card_id=card_id, card_name=card_name, short_link=short_link,
+        old={"name": "Ship draft"},
+    )
 
 
 def test_card_moved_by_another_member_notifies():
