@@ -50,14 +50,20 @@ async def due_soon_loop(app: FastAPI):
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.trello = TrelloClient(
-        key=os.environ["TRELLO_KEY"],
-        token=os.environ["TRELLO_TOKEN"],
-        board_id=os.environ["TRELLO_BOARD_ID"],
-    )
-    app.state.discord = DiscordClient(webhook_url=os.environ["DISCORD_WEBHOOK_URL"])
-    app.state.member_map = load_member_map()
-    app.state.notifier_state = load_state()
+    # Tests pre-populate app.state with fakes before startup (see tests/test_app.py);
+    # only fall back to real construction for whatever isn't already set.
+    if not hasattr(app.state, "trello"):
+        app.state.trello = TrelloClient(
+            key=os.environ["TRELLO_KEY"],
+            token=os.environ["TRELLO_TOKEN"],
+            board_id=os.environ["TRELLO_BOARD_ID"],
+        )
+    if not hasattr(app.state, "discord"):
+        app.state.discord = DiscordClient(webhook_url=os.environ["DISCORD_WEBHOOK_URL"])
+    if not hasattr(app.state, "member_map"):
+        app.state.member_map = load_member_map()
+    if not hasattr(app.state, "notifier_state"):
+        app.state.notifier_state = load_state()
 
     task = asyncio.create_task(due_soon_loop(app))
     yield
