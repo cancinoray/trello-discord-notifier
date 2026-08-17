@@ -41,6 +41,7 @@ COLOR_DUE_SOON = 0xE74C3C     # red
 COLOR_CARD_CREATED = 0x2ECC71  # green
 COLOR_CARD_MOVED = 0x3498DB    # blue
 COLOR_COMMENT_ADDED = 0xF1C40F  # gold
+COLOR_MEMBER_ADDED = 0x9B59B6  # purple
 
 
 def load_member_map():
@@ -94,7 +95,7 @@ class TrelloClient:
         params = {
             "key": self._key,
             "token": self._token,
-            "filter": "createCard,updateCard,commentCard",
+            "filter": "createCard,updateCard,commentCard,addMemberToCard",
             "limit": 1000,
         }
         if cursor is not None:
@@ -224,9 +225,9 @@ def _process_due_soon(trello, discord, state, now, member_map=None):
 
 
 def handle_logged_action(trello, discord, action, member_map):
-    """Notify Discord for a single Logged Event (createCard/updateCard/commentCard).
-    Returns True if a notification was sent, False if the action was skipped
-    (e.g. an updateCard that wasn't a list move)."""
+    """Notify Discord for a single Logged Event (createCard/updateCard/commentCard/
+    addMemberToCard). Returns True if a notification was sent, False if the action
+    was skipped (e.g. an updateCard that wasn't a list move)."""
     card = action["data"]["card"]
     card_url = f"https://trello.com/c/{card['shortLink']}"
     if action["type"] == "createCard":
@@ -261,6 +262,17 @@ def handle_logged_action(trello, discord, action, member_map):
             description += f"\n{mentions}"
         discord.send_embed(
             title="💬 New comment", description=description, color=COLOR_COMMENT_ADDED, url=card_url
+        )
+        return True
+    elif action["type"] == "addMemberToCard":
+        added_member = action["data"]["member"]
+        member_for_mention = {"id": added_member["id"], "fullName": added_member["name"]}
+        mentions = mentions_line([member_for_mention], member_map)
+        description = f"**{card['name']}**"
+        if mentions:
+            description += f"\n{mentions}"
+        discord.send_embed(
+            title="👤 Member added", description=description, color=COLOR_MEMBER_ADDED, url=card_url
         )
         return True
     return False

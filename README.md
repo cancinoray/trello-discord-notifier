@@ -13,6 +13,7 @@ Sends you a Discord message — as a color-coded embed, not plain text — when 
 - 🆕 Card created (green)
 - ➡️ Card moved between lists (blue)
 - 💬 Comment added (gold)
+- 👤 Member added to a card (purple)
 
 Every message shows the card as a clickable link, and — if the card has assigned Trello members — an "Assigned" line naming them (see [Mention assignees](#4-optional-mention-assignees-in-discord) below).
 
