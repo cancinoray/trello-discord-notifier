@@ -1,8 +1,8 @@
 # Trello → Discord Notifier
 
-Sends you a Discord message when things worth noticing happen on your Trello board.
+Sends you a Discord message — as a color-coded embed, not plain text — when things worth noticing happen on your Trello board.
 
-**Due-date reminders**, for cards with a due date set and not marked complete:
+**Due-date reminders** (⏰ red), for cards with a due date set and not marked complete:
 
 - 1 day before, at 8:00 AM
 - Same day, at 8:00 AM (skipped if the deadline itself is before 8am)
@@ -10,9 +10,11 @@ Sends you a Discord message when things worth noticing happen on your Trello boa
 
 **Board activity**, for any member's action on the board:
 
-- 🆕 Card created
-- ➡️ Card moved between lists
-- 💬 Comment added
+- 🆕 Card created (green)
+- ➡️ Card moved between lists (blue)
+- 💬 Comment added (gold)
+
+Every message shows the card as a clickable link, and — if the card has assigned Trello members — an "Assigned" line naming them (see [Mention assignees](#4-optional-mention-assignees-in-discord) below).
 
 Two ways to run it:
 
@@ -48,7 +50,7 @@ Tip: make the repo **public** for unlimited free GitHub Actions minutes. If you'
 
 ## 4. (Optional) Mention assignees in Discord
 
-If a card has assigned Trello members, board-activity messages can `@mention` them in Discord instead of just printing their Trello name. This requires mapping each Trello member's id to their Discord user id, since the two platforms have no built-in link.
+If a card has assigned Trello members, every message type — due-date reminders and board activity alike — can `@mention` them in Discord instead of just printing their Trello name. This requires mapping each Trello member's id to their Discord user id, since the two platforms have no built-in link.
 
 1. Get each teammate's Trello member id: `https://api.trello.com/1/boards/<TRELLO_BOARD_ID>/members?key=<TRELLO_KEY>&token=<TRELLO_TOKEN>` (open in a browser while logged in) lists every board member's `id`.
 2. Get their Discord user id: in Discord, enable **Settings → Advanced → Developer Mode**, then right-click their name → **Copy User ID**.
