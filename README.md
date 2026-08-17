@@ -85,7 +85,7 @@ The first run only seeds state and won't notify on the board's pre-existing hist
 
 ## 7. Done
 
-The workflow in `.github/workflows/notify.yml` runs automatically every 15 minutes. You can also trigger it manually from the **Actions** tab → "Trello Discord Notifier" → **Run workflow**, useful for testing.
+The workflow in `.github/workflows/notify.yml` runs automatically every 5 minutes. You can also trigger it manually from the **Actions** tab → "Trello Discord Notifier" → **Run workflow**, useful for testing.
 
 ## Notes / limitations
 
