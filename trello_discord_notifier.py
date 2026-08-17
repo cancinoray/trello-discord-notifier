@@ -36,6 +36,12 @@ LABELS = {
     "30min_before": "Due in 30 minutes",
 }
 
+# Discord embed side-bar colors, one per Event Type.
+COLOR_DUE_SOON = 0xE74C3C     # red
+COLOR_CARD_CREATED = 0x2ECC71  # green
+COLOR_CARD_MOVED = 0x3498DB    # blue
+COLOR_COMMENT_ADDED = 0xF1C40F  # gold
+
 
 def load_member_map():
     """Parse DISCORD_MEMBER_MAP ("trelloId1:discordId1,trelloId2:discordId2")
@@ -140,10 +146,13 @@ class DiscordClient:
     def __init__(self, webhook_url):
         self._webhook_url = webhook_url
 
-    def send(self, text):
+    def send_embed(self, title, description, color, url=None):
+        embed = {"title": title, "description": description, "color": color}
+        if url:
+            embed["url"] = url
         resp = requests.post(
             self._webhook_url,
-            json={"content": text},
+            json={"embeds": [embed]},
             timeout=15,
         )
         resp.raise_for_status()
@@ -176,7 +185,9 @@ def checkpoints_for_due(due_local):
     return cps
 
 
-def _process_due_soon(trello, discord, state, now):
+def _process_due_soon(trello, discord, state, now, member_map=None):
+    if member_map is None:
+        member_map = {}
     cards = trello.fetch_due_cards()
     current_ids = {c["id"] for c in cards}
     sent = 0
@@ -191,13 +202,16 @@ def _process_due_soon(trello, discord, state, now):
             already_sent = card_state.get(key, False)
             in_window = cp_time <= now < cp_time + timedelta(minutes=WINDOW_MINUTES)
             if in_window and not already_sent:
-                text = (
-                    f"⏰ **{LABELS[key]}**\n"
-                    f"{card['name']}\n"
-                    f"Due: {due_local.strftime('%b %d, %I:%M %p')}\n"
-                    f"{card['shortUrl']}"
+                mentions = mentions_line(trello.fetch_card_members(card_id), member_map)
+                description = f"**{card['name']}**\nDue: {due_local.strftime('%b %d, %I:%M %p')}"
+                if mentions:
+                    description += f"\n{mentions}"
+                discord.send_embed(
+                    title=f"⏰ {LABELS[key]}",
+                    description=description,
+                    color=COLOR_DUE_SOON,
+                    url=card["shortUrl"],
                 )
-                discord.send(text)
                 card_state[key] = True
                 sent += 1
 
@@ -214,15 +228,15 @@ def handle_logged_action(trello, discord, action, member_map):
     Returns True if a notification was sent, False if the action was skipped
     (e.g. an updateCard that wasn't a list move)."""
     card = action["data"]["card"]
+    card_url = f"https://trello.com/c/{card['shortLink']}"
     if action["type"] == "createCard":
         mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        text = (
-            f"🆕 **Card created**\n"
-            f"{card['name']}\n"
-            + (f"{mentions}\n" if mentions else "")
-            + f"https://trello.com/c/{card['shortLink']}"
+        description = f"**{card['name']}**"
+        if mentions:
+            description += f"\n{mentions}"
+        discord.send_embed(
+            title="🆕 Card created", description=description, color=COLOR_CARD_CREATED, url=card_url
         )
-        discord.send(text)
         return True
     elif (
         action["type"] == "updateCard"
@@ -232,26 +246,22 @@ def handle_logged_action(trello, discord, action, member_map):
         list_before = action["data"]["listBefore"]["name"]
         list_after = action["data"]["listAfter"]["name"]
         mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        text = (
-            f"➡️ **Card moved**\n"
-            f"{card['name']}\n"
-            f"{list_before} → {list_after}\n"
-            + (f"{mentions}\n" if mentions else "")
-            + f"https://trello.com/c/{card['shortLink']}"
+        description = f"**{card['name']}**\n{list_before} → {list_after}"
+        if mentions:
+            description += f"\n{mentions}"
+        discord.send_embed(
+            title="➡️ Card moved", description=description, color=COLOR_CARD_MOVED, url=card_url
         )
-        discord.send(text)
         return True
     elif action["type"] == "commentCard":
         commenter = action["memberCreator"]["fullName"]
         mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-        text = (
-            f"💬 **New comment**\n"
-            f"{card['name']}\n"
-            f"{commenter}: {action['data']['text']}\n"
-            + (f"{mentions}\n" if mentions else "")
-            + f"https://trello.com/c/{card['shortLink']}"
+        description = f"**{card['name']}**\n{commenter}: {action['data']['text']}"
+        if mentions:
+            description += f"\n{mentions}"
+        discord.send_embed(
+            title="💬 New comment", description=description, color=COLOR_COMMENT_ADDED, url=card_url
         )
-        discord.send(text)
         return True
     return False
 
@@ -294,7 +304,7 @@ def run(trello, discord, state, member_map=None, now=None):
     self_member_id = trello.fetch_self_member_id()
     state["self_member_id"] = self_member_id
 
-    sent = _process_due_soon(trello, discord, state, now)
+    sent = _process_due_soon(trello, discord, state, now, member_map)
     sent += _process_logged_events(trello, discord, state, self_member_id, member_map, now)
 
     return sent

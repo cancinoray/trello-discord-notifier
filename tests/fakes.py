@@ -23,8 +23,16 @@ class FakeTrelloClient:
 
 
 class FakeDiscordClient:
+    """Records embeds sent via send_embed(). `sent` holds a searchable text
+    representation of each embed (title + description) so existing tests can
+    keep asserting on message content with `in`, without inspecting embed
+    structure directly; `embeds` holds the raw dicts for structural assertions."""
+
     def __init__(self):
         self.sent = []
+        self.embeds = []
 
-    def send(self, text):
-        self.sent.append(text)
+    def send_embed(self, title, description, color, url=None):
+        embed = {"title": title, "description": description, "color": color, "url": url}
+        self.embeds.append(embed)
+        self.sent.append(f"{title}\n{description}\n{url or ''}")

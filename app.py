@@ -38,7 +38,8 @@ async def due_soon_loop(app: FastAPI):
     while True:
         try:
             sent = _process_due_soon(
-                app.state.trello, app.state.discord, app.state.notifier_state, datetime.now(TZ)
+                app.state.trello, app.state.discord, app.state.notifier_state, datetime.now(TZ),
+                app.state.member_map,
             )
             save_state(app.state.notifier_state)
             if sent:
