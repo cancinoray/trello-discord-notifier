@@ -12,43 +12,27 @@ Usage:
 import os
 import sys
 
-import requests
+from trello_discord_notifier import TrelloClient
 
-TRELLO_KEY = os.environ["TRELLO_KEY"]
-TRELLO_TOKEN = os.environ["TRELLO_TOKEN"]
-TRELLO_BOARD_ID = os.environ["TRELLO_BOARD_ID"]
+trello = TrelloClient(
+    key=os.environ["TRELLO_KEY"],
+    token=os.environ["TRELLO_TOKEN"],
+    board_id=os.environ["TRELLO_BOARD_ID"],
+)
 
 
 def list_webhooks():
-    url = f"https://api.trello.com/1/tokens/{TRELLO_TOKEN}/webhooks"
-    resp = requests.get(url, params={"key": TRELLO_KEY}, timeout=15)
-    resp.raise_for_status()
-    for hook in resp.json():
+    for hook in trello.list_webhooks():
         print(hook["id"], hook["callbackURL"], "active" if hook["active"] else "inactive")
 
 
 def delete_webhook(webhook_id):
-    url = f"https://api.trello.com/1/webhooks/{webhook_id}"
-    resp = requests.delete(url, params={"key": TRELLO_KEY, "token": TRELLO_TOKEN}, timeout=15)
-    resp.raise_for_status()
+    trello.delete_webhook(webhook_id)
     print(f"Deleted webhook {webhook_id}.")
 
 
 def register_webhook(callback_url):
-    url = "https://api.trello.com/1/webhooks"
-    resp = requests.post(
-        url,
-        data={
-            "key": TRELLO_KEY,
-            "token": TRELLO_TOKEN,
-            "idModel": TRELLO_BOARD_ID,
-            "callbackURL": callback_url,
-            "description": "Discord notifier",
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
-    hook = resp.json()
+    hook = trello.register_webhook(callback_url)
     print(f"Registered webhook {hook['id']} -> {hook['callbackURL']}")
 
 

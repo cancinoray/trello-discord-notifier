@@ -25,7 +25,7 @@ The span of time (currently 20 minutes) after a checkpoint's target time during 
 _Avoid_: Grace period, buffer
 
 **Action Cursor**:
-The board-wide "last processed Trello Action" position (id/timestamp) used to dedup Logged Events across runs. A single value per board, independent of any card's lifecycle — unlike checkpoint state, it needs no pruning when cards are archived or completed, since it tracks a stream position rather than per-card flags.
+The board-wide "last processed Trello Action" position (id/timestamp) used to dedup Logged Events across runs. A single value per board, independent of any card's lifecycle — unlike checkpoint state, it needs no pruning when cards are archived or completed, since it tracks a stream position rather than per-card flags. Populated and consumed only by the polling adapter (`run()`/`_process_logged_events()`); the webhook adapter never reads or writes it, relying instead on Trello's webhook delivery as its dedup boundary. Under a webhook-only deployment, `state.json`'s `action_cursor` field is simply never populated — expected, not a bug.
 _Avoid_: Last seen id, watermark
 
 **Member Map**:

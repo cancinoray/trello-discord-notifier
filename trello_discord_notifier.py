@@ -105,6 +105,36 @@ class TrelloClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_webhooks(self):
+        """Return all webhooks registered against this client's token."""
+        url = f"https://api.trello.com/1/tokens/{self._token}/webhooks"
+        resp = requests.get(url, params={"key": self._key}, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+
+    def register_webhook(self, callback_url, description="Discord notifier"):
+        """Register a webhook against this client's board, calling back to `callback_url`."""
+        url = "https://api.trello.com/1/webhooks"
+        resp = requests.post(
+            url,
+            data={
+                "key": self._key,
+                "token": self._token,
+                "idModel": self._board_id,
+                "callbackURL": callback_url,
+                "description": description,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def delete_webhook(self, webhook_id):
+        """Delete a previously registered webhook by id."""
+        url = f"https://api.trello.com/1/webhooks/{webhook_id}"
+        resp = requests.delete(url, params={"key": self._key, "token": self._token}, timeout=15)
+        resp.raise_for_status()
+
 
 class DiscordClient:
     def __init__(self, webhook_url):
@@ -259,6 +289,8 @@ def run(trello, discord, state, member_map=None, now=None):
     if member_map is None:
         member_map = {}
 
+    # Polling-only: the webhook adapter never calls run(), so self_member_id
+    # is never populated in state.json under a webhook-only deployment.
     self_member_id = trello.fetch_self_member_id()
     state["self_member_id"] = self_member_id
 

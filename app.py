@@ -33,21 +33,14 @@ logger = logging.getLogger("trello_discord_notifier")
 
 DUE_SOON_INTERVAL_SECONDS = int(os.environ.get("DUE_SOON_INTERVAL_SECONDS", "60"))
 
-trello = TrelloClient(
-    key=os.environ["TRELLO_KEY"],
-    token=os.environ["TRELLO_TOKEN"],
-    board_id=os.environ["TRELLO_BOARD_ID"],
-)
-discord = DiscordClient(webhook_url=os.environ["DISCORD_WEBHOOK_URL"])
-member_map = load_member_map()
-state = load_state()
 
-
-async def due_soon_loop():
+async def due_soon_loop(app: FastAPI):
     while True:
         try:
-            sent = _process_due_soon(trello, discord, state, datetime.now(TZ))
-            save_state(state)
+            sent = _process_due_soon(
+                app.state.trello, app.state.discord, app.state.notifier_state, datetime.now(TZ)
+            )
+            save_state(app.state.notifier_state)
             if sent:
                 logger.info("Sent %d due-soon notification(s).", sent)
         except Exception:
@@ -57,7 +50,16 @@ async def due_soon_loop():
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(due_soon_loop())
+    app.state.trello = TrelloClient(
+        key=os.environ["TRELLO_KEY"],
+        token=os.environ["TRELLO_TOKEN"],
+        board_id=os.environ["TRELLO_BOARD_ID"],
+    )
+    app.state.discord = DiscordClient(webhook_url=os.environ["DISCORD_WEBHOOK_URL"])
+    app.state.member_map = load_member_map()
+    app.state.notifier_state = load_state()
+
+    task = asyncio.create_task(due_soon_loop(app))
     yield
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
@@ -85,7 +87,9 @@ async def receive_webhook(request: Request):
         return Response(status_code=200)
 
     try:
-        sent = handle_logged_action(trello, discord, action, member_map)
+        sent = handle_logged_action(
+            request.app.state.trello, request.app.state.discord, action, request.app.state.member_map
+        )
         if sent:
             logger.info("Notified Discord for action %s (%s).", action["id"], action["type"])
     except Exception:

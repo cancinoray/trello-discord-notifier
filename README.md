@@ -141,4 +141,4 @@ From here, creating/moving/commenting on cards notifies Discord within seconds. 
 ### Notes
 
 - The webhook server and the GitHub Actions workflow both write to the same `state.json` shape but aren't meant to run simultaneously against the same board — pick one.
-- Trello's webhook delivery is reliable but not perfectly guaranteed (occasional retries/drops) — acceptable for a notification use case, but not a system of record.
+- **Dedup works differently between the two.** The GitHub Actions (polling) path tracks an Action Cursor in `state.json` — the id of the last Trello Action it processed — so re-running never double-notifies. The Railway (webhook) path has no cursor at all; it trusts Trello's webhook delivery to call the server once per action. Trello's webhook delivery is reliable but not perfectly guaranteed (occasional retries/drops) — acceptable for a notification use case, but not a system of record. Under a webhook-only deployment, `state.json`'s `action_cursor` and `self_member_id` fields are simply never populated — that's expected, not a bug.
