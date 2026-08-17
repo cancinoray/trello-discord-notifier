@@ -90,7 +90,9 @@ async def receive_webhook(request: Request):
         # Trello also POSTs here for webhook lifecycle pings with no action payload.
         return Response(status_code=200)
 
-    if action["type"] not in ("createCard", "updateCard", "commentCard", "addMemberToCard"):
+    if action["type"] not in (
+        "createCard", "updateCard", "commentCard", "addMemberToCard", "createList"
+    ):
         return Response(status_code=200)
 
     try:

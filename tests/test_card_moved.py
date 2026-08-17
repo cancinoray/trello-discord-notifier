@@ -67,7 +67,9 @@ def test_card_moved_by_self_also_notifies():
     assert len(discord.sent) == 1
 
 
-def test_non_move_update_card_action_does_not_notify():
+def test_rename_action_notifies_as_card_updated_not_card_moved():
+    """A non-move updateCard (e.g. a rename) is a separate Event Type (Card
+    updated/renamed) — it does notify, just not with the "Card moved" title."""
     trello = FakeTrelloClient(
         cards=[],
         actions=[rename_card_action("action1", member_id="other-member")],
@@ -78,7 +80,8 @@ def test_non_move_update_card_action_does_not_notify():
 
     run(trello, discord, state, now=NOW)
 
-    assert discord.sent == []
+    assert len(discord.sent) == 1
+    assert "Card moved" not in discord.sent[0]
 
 
 def test_update_card_with_same_list_before_and_after_does_not_notify():

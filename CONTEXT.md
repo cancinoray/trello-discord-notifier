@@ -5,7 +5,7 @@ Watches a single Trello board and sends Discord messages when things worth notic
 ## Language
 
 **Event Type**:
-One of an explicit, enumerated set of things this system notifies on: due-soon, card moved, card created, comment added, member added. Deliberately not a generic mirror of Trello's full activity feed — each type is chosen for signal, not completeness. Notably absent: card renamed/described, list reordered/renamed, member removed, label changes, checklist updates — these fire real Trello Actions but aren't tracked.
+One of an explicit, enumerated set of things this system notifies on: due-soon, card moved, card created, card renamed, card description updated, comment added, member added, list created. Deliberately not a generic mirror of Trello's full activity feed — each type is chosen for signal, not completeness. Notably absent: list reordered/archived/renamed, member removed, label changes, checklist updates, due date changes — these fire real Trello Actions but aren't tracked.
 _Avoid_: Notification type, trigger
 
 **Computed Event**:
@@ -13,7 +13,7 @@ An Event Type derived from card state plus wall-clock time, with no backing entr
 _Avoid_: Synthetic event, derived event
 
 **Logged Event**:
-An Event Type sourced directly from a Trello Action returned by the Actions API — e.g. card moved, card created, comment added, member added. Deduped using Trello's own Action `id`. Every Logged Event has an actor (the Trello member who caused it), notified regardless of who that actor is.
+An Event Type sourced directly from a Trello Action returned by the Actions API — e.g. card moved, card created, card renamed, description updated, comment added, member added, list created. Deduped using Trello's own Action `id`. Every Logged Event has an actor (the Trello member who caused it), notified regardless of who that actor is. A single Trello Action type can map to more than one Event Type — `updateCard` covers card-moved, card-renamed, and description-updated, disambiguated by which key is present in the Action's `data.old` payload (`listBefore`/`listAfter` for moves, `name` for renames, `desc` for description edits).
 _Avoid_: Native event, action event
 
 **Checkpoint**:

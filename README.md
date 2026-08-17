@@ -12,10 +12,12 @@ Sends you a Discord message — as a color-coded embed, not plain text — when 
 
 - 🆕 Card created (green)
 - ➡️ Card moved between lists (blue)
+- ✏️ Card renamed or its description updated (teal)
 - 💬 Comment added (gold)
 - 👤 Member added to a card (purple)
+- 📋 New list created (orange)
 
-Every message shows the card as a clickable link, and — if the card has assigned Trello members — an "Assigned" line naming them (see [Mention assignees](#4-optional-mention-assignees-in-discord) below).
+Every card message shows the card as a clickable link, and — if the card has assigned Trello members — an "Assigned" line naming them (see [Mention assignees](#4-optional-mention-assignees-in-discord) below). Not tracked: list reordering/archiving/renaming, member removal, label changes, checklist updates, due date edits — these happen in Trello but don't notify.
 
 Two ways to run it:
 
