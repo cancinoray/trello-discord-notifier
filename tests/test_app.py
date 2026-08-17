@@ -14,6 +14,7 @@ os.environ.setdefault("DUE_SOON_INTERVAL_SECONDS", "3600")
 from fastapi.testclient import TestClient  # noqa: E402 (must follow STATE_FILE setup above)
 
 import app as app_module  # noqa: E402
+from trello_discord_notifier import HANDLED_ACTION_TYPES, TrelloClient  # noqa: E402
 from tests.fakes import FakeDiscordClient, FakeTrelloClient, make_action  # noqa: E402
 
 
@@ -109,3 +110,54 @@ def test_due_soon_loop_exception_does_not_propagate():
         resp = client.get("/health")
 
     assert resp.status_code == 200
+
+
+def test_polling_filter_is_built_from_handled_action_types(monkeypatch):
+    """TrelloClient.fetch_actions_since's polling filter string must be built
+    from HANDLED_ACTION_TYPES, not a separately hand-typed list, so it can't
+    silently diverge from app.py's webhook allowlist (which reads the same
+    constant — see test_webhook_allowlist_matches_handled_action_types)."""
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return []
+
+    def fake_get(url, params, timeout):
+        captured.update(params)
+        return FakeResponse()
+
+    monkeypatch.setattr("trello_discord_notifier.requests.get", fake_get)
+
+    trello = TrelloClient(key="k", token="t", board_id="b")
+    trello.fetch_actions_since(cursor=None)
+
+    assert set(captured["filter"].split(",")) == set(HANDLED_ACTION_TYPES)
+
+
+def test_webhook_allowlist_matches_handled_action_types(monkeypatch):
+    """Every type in HANDLED_ACTION_TYPES reaches handle_logged_action; nothing
+    outside it does. Confirms the allowlist check in receive_webhook reads the
+    shared constant rather than its own hand-typed tuple, so it can't silently
+    diverge from the polling filter. Spies on handle_logged_action directly,
+    decoupled from any Event Type's own notify conditions (already covered by
+    the per-Event-Type test files)."""
+    calls = []
+    monkeypatch.setattr(
+        app_module, "handle_logged_action",
+        lambda trello, discord, action, member_map: calls.append(action["type"]) or True,
+    )
+
+    client = make_client()
+    with client:
+        for action_type in HANDLED_ACTION_TYPES:
+            resp = client.post("/trello-webhook", json={"action": {"id": "a1", "type": action_type, "data": {}}})
+            assert resp.status_code == 200
+
+        resp = client.post("/trello-webhook", json={"action": {"id": "a2", "type": "updateBoard", "data": {}}})
+        assert resp.status_code == 200
+
+    assert calls == list(HANDLED_ACTION_TYPES)

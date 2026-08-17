@@ -45,6 +45,12 @@ COLOR_MEMBER_ADDED = 0x9B59B6  # purple
 COLOR_CARD_UPDATED = 0x1ABC9C  # teal
 COLOR_LIST_CREATED = 0xE67E22  # orange
 
+# Every Trello Action type this system notifies on (see handle_logged_action).
+# Single source of truth for both the polling filter (TrelloClient.fetch_actions_since)
+# and the webhook allowlist (app.py's receive_webhook) -- keeps the two deployment
+# paths from silently diverging on which action types they're prepared to handle.
+HANDLED_ACTION_TYPES = ("createCard", "updateCard", "commentCard", "addMemberToCard", "createList")
+
 
 def load_member_map():
     """Parse DISCORD_MEMBER_MAP ("trelloId1:discordId1,trelloId2:discordId2")
@@ -97,7 +103,7 @@ class TrelloClient:
         params = {
             "key": self._key,
             "token": self._token,
-            "filter": "createCard,updateCard,commentCard,addMemberToCard,createList",
+            "filter": ",".join(HANDLED_ACTION_TYPES),
             "limit": 1000,
         }
         if cursor is not None:

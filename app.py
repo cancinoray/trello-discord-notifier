@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request, Response
 
 from trello_discord_notifier import (
     DiscordClient,
+    HANDLED_ACTION_TYPES,
     TrelloClient,
     TZ,
     handle_logged_action,
@@ -90,9 +91,7 @@ async def receive_webhook(request: Request):
         # Trello also POSTs here for webhook lifecycle pings with no action payload.
         return Response(status_code=200)
 
-    if action["type"] not in (
-        "createCard", "updateCard", "commentCard", "addMemberToCard", "createList"
-    ):
+    if action["type"] not in HANDLED_ACTION_TYPES:
         return Response(status_code=200)
 
     try:
