@@ -23,7 +23,10 @@ import requests
 TIMEZONE = os.environ.get("TZ_NAME", "Asia/Manila")
 MORNING_HOUR = 8                 # 8 AM local time
 WINDOW_MINUTES = 20              # how long a checkpoint stays "firable" after it passes
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
+STATE_FILE = os.environ.get(
+    "STATE_FILE",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json"),
+)
 
 TZ = ZoneInfo(TIMEZONE)
 
@@ -176,6 +179,53 @@ def _process_due_soon(trello, discord, state, now):
     return sent
 
 
+def handle_logged_action(trello, discord, action, member_map):
+    """Notify Discord for a single Logged Event (createCard/updateCard/commentCard).
+    Returns True if a notification was sent, False if the action was skipped
+    (e.g. an updateCard that wasn't a list move)."""
+    card = action["data"]["card"]
+    if action["type"] == "createCard":
+        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
+        text = (
+            f"🆕 **Card created**\n"
+            f"{card['name']}\n"
+            + (f"{mentions}\n" if mentions else "")
+            + f"https://trello.com/c/{card['shortLink']}"
+        )
+        discord.send(text)
+        return True
+    elif (
+        action["type"] == "updateCard"
+        and "listBefore" in action["data"]
+        and action["data"]["listBefore"]["id"] != action["data"]["listAfter"]["id"]
+    ):
+        list_before = action["data"]["listBefore"]["name"]
+        list_after = action["data"]["listAfter"]["name"]
+        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
+        text = (
+            f"➡️ **Card moved**\n"
+            f"{card['name']}\n"
+            f"{list_before} → {list_after}\n"
+            + (f"{mentions}\n" if mentions else "")
+            + f"https://trello.com/c/{card['shortLink']}"
+        )
+        discord.send(text)
+        return True
+    elif action["type"] == "commentCard":
+        commenter = action["memberCreator"]["fullName"]
+        mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
+        text = (
+            f"💬 **New comment**\n"
+            f"{card['name']}\n"
+            f"{commenter}: {action['data']['text']}\n"
+            + (f"{mentions}\n" if mentions else "")
+            + f"https://trello.com/c/{card['shortLink']}"
+        )
+        discord.send(text)
+        return True
+    return False
+
+
 def _process_logged_events(trello, discord, state, self_member_id, member_map, now):
     is_first_run = "action_cursor" not in state
     cursor = state.get("action_cursor")
@@ -191,45 +241,7 @@ def _process_logged_events(trello, discord, state, self_member_id, member_map, n
         return sent
 
     for action in actions:
-        card = action["data"]["card"]
-        if action["type"] == "createCard":
-            mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-            text = (
-                f"🆕 **Card created**\n"
-                f"{card['name']}\n"
-                + (f"{mentions}\n" if mentions else "")
-                + f"https://trello.com/c/{card['shortLink']}"
-            )
-            discord.send(text)
-            sent += 1
-        elif (
-            action["type"] == "updateCard"
-            and "listBefore" in action["data"]
-            and action["data"]["listBefore"]["id"] != action["data"]["listAfter"]["id"]
-        ):
-            list_before = action["data"]["listBefore"]["name"]
-            list_after = action["data"]["listAfter"]["name"]
-            mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-            text = (
-                f"➡️ **Card moved**\n"
-                f"{card['name']}\n"
-                f"{list_before} → {list_after}\n"
-                + (f"{mentions}\n" if mentions else "")
-                + f"https://trello.com/c/{card['shortLink']}"
-            )
-            discord.send(text)
-            sent += 1
-        elif action["type"] == "commentCard":
-            commenter = action["memberCreator"]["fullName"]
-            mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
-            text = (
-                f"💬 **New comment**\n"
-                f"{card['name']}\n"
-                f"{commenter}: {action['data']['text']}\n"
-                + (f"{mentions}\n" if mentions else "")
-                + f"https://trello.com/c/{card['shortLink']}"
-            )
-            discord.send(text)
+        if handle_logged_action(trello, discord, action, member_map):
             sent += 1
 
     if actions:
@@ -239,7 +251,9 @@ def _process_logged_events(trello, discord, state, self_member_id, member_map, n
 
 
 def run(trello, discord, state, member_map=None, now=None):
-    """Orchestrate a single check: due-soon reminders plus board-activity notifications."""
+    """Orchestrate a single check: due-soon reminders plus board-activity notifications.
+    Used by the polling entrypoint (main); the webhook server calls
+    handle_logged_action directly per-action instead."""
     if now is None:
         now = datetime.now(TZ)
     if member_map is None:

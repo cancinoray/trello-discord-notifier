@@ -14,7 +14,10 @@ Sends you a Discord message when things worth noticing happen on your Trello boa
 - ➡️ Card moved between lists
 - 💬 Comment added
 
-Runs for free forever via GitHub Actions (no server needed).
+Two ways to run it:
+
+- **GitHub Actions** (polling, every 5 minutes) — free, no server needed. See steps below.
+- **Railway** (webhooks, real-time) — an always-on server that Trello pushes to instantly. See [Real-time on Railway](#real-time-on-railway).
 
 ## 1. Create a Discord webhook
 
@@ -94,3 +97,48 @@ The workflow in `.github/workflows/notify.yml` runs automatically every 5 minute
 - GitHub's schedule can run a few minutes late during high load; the 20-minute firing window in the script absorbs that.
 - Only cards with a due date set and not marked complete are checked for due-date reminders.
 - Board-activity notifications fire for every member's actions, including your own.
+
+## Real-time on Railway
+
+Instead of polling every 5 minutes, `app.py` runs a small always-on server that Trello calls the instant something happens on the board (via a registered webhook), so board-activity notifications land within seconds. Due-date reminders still can't be pushed by Trello (nothing "happens" when a deadline approaches), so those are checked on an in-process 1-minute interval instead.
+
+### 1. Create a new Railway service
+
+1. In your Railway project, **New → Deploy from GitHub repo** and pick this repo.
+2. Railway auto-detects the Python project via `pyproject.toml`/`uv.lock` and uses the `Procfile`'s `web:` command to start it.
+
+### 2. Add a volume for state.json
+
+State needs to persist across redeploys/restarts (Railway's default filesystem doesn't guarantee that):
+
+1. In the service → **Volumes → New Volume**, mount it at e.g. `/data`.
+2. Add an env var `STATE_FILE=/data/state.json`.
+
+### 3. Set environment variables
+
+In the service's **Variables** tab, add the same variables as the GitHub Actions setup, plus one new one:
+
+- `TRELLO_KEY`
+- `TRELLO_TOKEN`
+- `TRELLO_BOARD_ID`
+- `DISCORD_WEBHOOK_URL`
+- `DISCORD_MEMBER_MAP` (optional)
+- `STATE_FILE=/data/state.json` (from step 2)
+- `PORT` — Railway sets this automatically; the `Procfile` already reads it.
+
+### 4. Deploy, then register the Trello webhook
+
+1. Deploy the service and copy its public URL from Railway (Settings → Networking → Generate Domain if you don't have one yet).
+2. Locally, with the same env vars loaded (`TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_BOARD_ID`), run:
+   ```bash
+   uv run register_webhook.py https://<your-railway-domain>/trello-webhook
+   ```
+   Trello will `HEAD` that URL to verify it's reachable before registering — the server already handles that at `/trello-webhook`.
+3. Confirm it worked: `uv run register_webhook.py --list` should show your webhook as `active`.
+
+From here, creating/moving/commenting on cards notifies Discord within seconds. To remove the webhook later: `uv run register_webhook.py --delete <webhook-id>`.
+
+### Notes
+
+- The webhook server and the GitHub Actions workflow both write to the same `state.json` shape but aren't meant to run simultaneously against the same board — pick one.
+- Trello's webhook delivery is reliable but not perfectly guaranteed (occasional retries/drops) — acceptable for a notification use case, but not a system of record.
