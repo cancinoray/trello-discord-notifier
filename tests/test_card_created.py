@@ -8,13 +8,13 @@ TZ = ZoneInfo("Asia/Manila")
 NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 
 
-def create_card_action(action_id, member_id, card_name="New card", short_link="abc123"):
+def create_card_action(action_id, member_id, card_name="New card", short_link="abc123", card_id="card1"):
     return {
         "id": action_id,
         "type": "createCard",
         "memberCreator": {"id": member_id},
         "data": {
-            "card": {"name": card_name, "shortLink": short_link},
+            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
         },
     }
 
@@ -34,7 +34,7 @@ def test_card_created_by_another_member_notifies():
     assert "New card" in discord.sent[0]
 
 
-def test_card_created_by_self_is_suppressed():
+def test_card_created_by_self_also_notifies():
     trello = FakeTrelloClient(
         cards=[],
         actions=[create_card_action("action1", member_id="self-member")],
@@ -45,7 +45,8 @@ def test_card_created_by_self_is_suppressed():
 
     run(trello, discord, state, now=NOW)
 
-    assert discord.sent == []
+    assert len(discord.sent) == 1
+    assert "New card" in discord.sent[0]
 
 
 def test_first_run_seeds_cursor_without_notifying_on_backlog():
@@ -101,3 +102,33 @@ def test_already_processed_action_is_not_renotified():
     run(trello, discord, state, now=NOW)
 
     assert discord.sent == []
+
+
+def test_assignee_with_discord_mapping_is_mentioned():
+    trello = FakeTrelloClient(
+        cards=[],
+        actions=[create_card_action("action1", member_id="other-member", card_id="card1")],
+        self_member_id="self-member",
+        card_members={"card1": [{"id": "trello-jamie", "fullName": "Jamie"}]},
+    )
+    discord = FakeDiscordClient()
+    state = {"action_cursor": "action0"}
+
+    run(trello, discord, state, member_map={"trello-jamie": "111222333"}, now=NOW)
+
+    assert "<@111222333>" in discord.sent[0]
+
+
+def test_assignee_without_discord_mapping_falls_back_to_name():
+    trello = FakeTrelloClient(
+        cards=[],
+        actions=[create_card_action("action1", member_id="other-member", card_id="card1")],
+        self_member_id="self-member",
+        card_members={"card1": [{"id": "trello-jamie", "fullName": "Jamie"}]},
+    )
+    discord = FakeDiscordClient()
+    state = {"action_cursor": "action0"}
+
+    run(trello, discord, state, member_map={}, now=NOW)
+
+    assert "Jamie" in discord.sent[0]

@@ -10,27 +10,27 @@ NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 
 def move_card_action(action_id, member_id, card_name="Ship report",
                       list_before="Doing", list_after="Done", short_link="abc123",
-                      list_before_id="list-doing", list_after_id="list-done"):
+                      list_before_id="list-doing", list_after_id="list-done", card_id="card1"):
     return {
         "id": action_id,
         "type": "updateCard",
         "memberCreator": {"id": member_id},
         "data": {
-            "card": {"name": card_name, "shortLink": short_link},
+            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
             "listBefore": {"id": list_before_id, "name": list_before},
             "listAfter": {"id": list_after_id, "name": list_after},
         },
     }
 
 
-def rename_card_action(action_id, member_id, card_name="Ship report", short_link="abc123"):
+def rename_card_action(action_id, member_id, card_name="Ship report", short_link="abc123", card_id="card1"):
     """An updateCard action that is NOT a list move (e.g. a rename)."""
     return {
         "id": action_id,
         "type": "updateCard",
         "memberCreator": {"id": member_id},
         "data": {
-            "card": {"name": card_name, "shortLink": short_link},
+            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
             "old": {"name": "Ship draft"},
         },
     }
@@ -53,7 +53,7 @@ def test_card_moved_by_another_member_notifies():
     assert "Done" in discord.sent[0]
 
 
-def test_card_moved_by_self_is_suppressed():
+def test_card_moved_by_self_also_notifies():
     trello = FakeTrelloClient(
         cards=[],
         actions=[move_card_action("action1", member_id="self-member")],
@@ -64,7 +64,7 @@ def test_card_moved_by_self_is_suppressed():
 
     run(trello, discord, state, now=NOW)
 
-    assert discord.sent == []
+    assert len(discord.sent) == 1
 
 
 def test_non_move_update_card_action_does_not_notify():

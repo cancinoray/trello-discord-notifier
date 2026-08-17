@@ -13,12 +13,8 @@ An Event Type derived from card state plus wall-clock time, with no backing entr
 _Avoid_: Synthetic event, derived event
 
 **Logged Event**:
-An Event Type sourced directly from a Trello Action returned by the Actions API — e.g. card moved, card created, comment added. Deduped using Trello's own Action `id`. Every Logged Event has an actor (the Trello member who caused it) and is subject to Self-Suppression.
+An Event Type sourced directly from a Trello Action returned by the Actions API — e.g. card moved, card created, comment added. Deduped using Trello's own Action `id`. Every Logged Event has an actor (the Trello member who caused it), notified regardless of who that actor is.
 _Avoid_: Native event, action event
-
-**Self-Suppression**:
-The rule that Logged Events caused by the configured "self" member (matched via the Action's `memberCreator` field) are not notified — only other members' activity is. Applies exclusively to Logged Events; Computed Events have no actor and are never suppressed by this rule.
-_Avoid_: Self-filtering, own-action filtering
 
 **Checkpoint**:
 A specific point in time, relative to a card's due date, at which a due-soon Computed Event may fire: 1 day before at 8am, same day at 8am, or 30 minutes before. Each checkpoint fires at most once per card.
@@ -31,3 +27,7 @@ _Avoid_: Grace period, buffer
 **Action Cursor**:
 The board-wide "last processed Trello Action" position (id/timestamp) used to dedup Logged Events across runs. A single value per board, independent of any card's lifecycle — unlike checkpoint state, it needs no pruning when cards are archived or completed, since it tracks a stream position rather than per-card flags.
 _Avoid_: Last seen id, watermark
+
+**Member Map**:
+A configured lookup from Trello member id to Discord user id (`DISCORD_MEMBER_MAP`), used to turn a card's assigned members into real Discord `@mentions` on Logged Event messages. Trello and Discord identities have no built-in link, so this mapping is maintained by hand. An assignee absent from the map still appears in the message, using their Trello name instead of a mention.
+_Avoid_: User mapping, mention config

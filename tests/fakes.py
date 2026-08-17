@@ -1,8 +1,9 @@
 class FakeTrelloClient:
-    def __init__(self, cards=None, actions=None, self_member_id="self-member"):
+    def __init__(self, cards=None, actions=None, self_member_id="self-member", card_members=None):
         self._cards = cards or []
         self._actions = actions or []
         self._self_member_id = self_member_id
+        self._card_members = card_members or {}
 
     def fetch_due_cards(self):
         return [c for c in self._cards if c.get("due") and not c.get("dueComplete")]
@@ -16,6 +17,9 @@ class FakeTrelloClient:
 
     def fetch_self_member_id(self):
         return self._self_member_id
+
+    def fetch_card_members(self, card_id):
+        return self._card_members.get(card_id, [])
 
 
 class FakeDiscordClient:

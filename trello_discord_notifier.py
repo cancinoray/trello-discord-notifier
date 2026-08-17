@@ -34,6 +34,26 @@ LABELS = {
 }
 
 
+def load_member_map():
+    """Parse DISCORD_MEMBER_MAP ("trelloId1:discordId1,trelloId2:discordId2")
+    into a dict of Trello member id -> Discord user id, used to @mention assignees."""
+    raw = os.environ.get("DISCORD_MEMBER_MAP", "")
+    pairs = (pair.split(":", 1) for pair in raw.split(",") if ":" in pair)
+    return {trello_id.strip(): discord_id.strip() for trello_id, discord_id in pairs}
+
+
+def mentions_line(members, member_map):
+    """Build a 'Assigned: @user1 @user2' line for a card's assigned members.
+    Members without a Discord mapping fall back to their Trello name."""
+    if not members:
+        return None
+    mentions = [
+        f"<@{member_map[m['id']]}>" if m["id"] in member_map else m["fullName"]
+        for m in members
+    ]
+    return f"Assigned: {', '.join(mentions)}"
+
+
 class TrelloClient:
     def __init__(self, key, token, board_id):
         self._key = key
@@ -73,6 +93,14 @@ class TrelloClient:
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         return list(reversed(resp.json()))  # Trello returns newest first
+
+    def fetch_card_members(self, card_id):
+        """Return the Trello members currently assigned to a card."""
+        url = f"https://api.trello.com/1/cards/{card_id}/members"
+        params = {"key": self._key, "token": self._token, "fields": "id,fullName"}
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
 
 
 class DiscordClient:
@@ -148,7 +176,7 @@ def _process_due_soon(trello, discord, state, now):
     return sent
 
 
-def _process_logged_events(trello, discord, state, self_member_id, now):
+def _process_logged_events(trello, discord, state, self_member_id, member_map, now):
     is_first_run = "action_cursor" not in state
     cursor = state.get("action_cursor")
     actions = trello.fetch_actions_since(cursor)
@@ -163,41 +191,46 @@ def _process_logged_events(trello, discord, state, self_member_id, now):
         return sent
 
     for action in actions:
-        if action["memberCreator"]["id"] != self_member_id:
-            card = action["data"]["card"]
-            if action["type"] == "createCard":
-                text = (
-                    f"🆕 **Card created**\n"
-                    f"{card['name']}\n"
-                    f"https://trello.com/c/{card['shortLink']}"
-                )
-                discord.send(text)
-                sent += 1
-            elif (
-                action["type"] == "updateCard"
-                and "listBefore" in action["data"]
-                and action["data"]["listBefore"]["id"] != action["data"]["listAfter"]["id"]
-            ):
-                list_before = action["data"]["listBefore"]["name"]
-                list_after = action["data"]["listAfter"]["name"]
-                text = (
-                    f"➡️ **Card moved**\n"
-                    f"{card['name']}\n"
-                    f"{list_before} → {list_after}\n"
-                    f"https://trello.com/c/{card['shortLink']}"
-                )
-                discord.send(text)
-                sent += 1
-            elif action["type"] == "commentCard":
-                commenter = action["memberCreator"]["fullName"]
-                text = (
-                    f"💬 **New comment**\n"
-                    f"{card['name']}\n"
-                    f"{commenter}: {action['data']['text']}\n"
-                    f"https://trello.com/c/{card['shortLink']}"
-                )
-                discord.send(text)
-                sent += 1
+        card = action["data"]["card"]
+        if action["type"] == "createCard":
+            mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
+            text = (
+                f"🆕 **Card created**\n"
+                f"{card['name']}\n"
+                + (f"{mentions}\n" if mentions else "")
+                + f"https://trello.com/c/{card['shortLink']}"
+            )
+            discord.send(text)
+            sent += 1
+        elif (
+            action["type"] == "updateCard"
+            and "listBefore" in action["data"]
+            and action["data"]["listBefore"]["id"] != action["data"]["listAfter"]["id"]
+        ):
+            list_before = action["data"]["listBefore"]["name"]
+            list_after = action["data"]["listAfter"]["name"]
+            mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
+            text = (
+                f"➡️ **Card moved**\n"
+                f"{card['name']}\n"
+                f"{list_before} → {list_after}\n"
+                + (f"{mentions}\n" if mentions else "")
+                + f"https://trello.com/c/{card['shortLink']}"
+            )
+            discord.send(text)
+            sent += 1
+        elif action["type"] == "commentCard":
+            commenter = action["memberCreator"]["fullName"]
+            mentions = mentions_line(trello.fetch_card_members(card["id"]), member_map)
+            text = (
+                f"💬 **New comment**\n"
+                f"{card['name']}\n"
+                f"{commenter}: {action['data']['text']}\n"
+                + (f"{mentions}\n" if mentions else "")
+                + f"https://trello.com/c/{card['shortLink']}"
+            )
+            discord.send(text)
+            sent += 1
 
     if actions:
         state["action_cursor"] = actions[-1]["id"]
@@ -205,16 +238,18 @@ def _process_logged_events(trello, discord, state, self_member_id, now):
     return sent
 
 
-def run(trello, discord, state, now=None):
+def run(trello, discord, state, member_map=None, now=None):
     """Orchestrate a single check: due-soon reminders plus board-activity notifications."""
     if now is None:
         now = datetime.now(TZ)
+    if member_map is None:
+        member_map = {}
 
     self_member_id = trello.fetch_self_member_id()
     state["self_member_id"] = self_member_id
 
     sent = _process_due_soon(trello, discord, state, now)
-    sent += _process_logged_events(trello, discord, state, self_member_id, now)
+    sent += _process_logged_events(trello, discord, state, self_member_id, member_map, now)
 
     return sent
 
@@ -229,8 +264,9 @@ def main():
         webhook_url=os.environ["DISCORD_WEBHOOK_URL"],
     )
     state = load_state()
+    member_map = load_member_map()
 
-    sent = run(trello, discord, state)
+    sent = run(trello, discord, state, member_map=member_map)
 
     save_state(state)
     print(f"Sent {sent} notification(s).")

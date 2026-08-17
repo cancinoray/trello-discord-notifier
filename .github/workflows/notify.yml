@@ -28,6 +28,7 @@ jobs:
           TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
           TRELLO_BOARD_ID: ${{ secrets.TRELLO_BOARD_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_MEMBER_MAP: ${{ secrets.DISCORD_MEMBER_MAP }}
           TZ_NAME: "Asia/Manila"
         run: uv run trello_discord_notifier.py
 

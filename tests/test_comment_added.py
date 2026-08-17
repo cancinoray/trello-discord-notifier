@@ -9,13 +9,13 @@ NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
 
 
 def comment_card_action(action_id, member_id, card_name="Ship report",
-                         comment_text="Looks good to me", short_link="abc123"):
+                         comment_text="Looks good to me", short_link="abc123", card_id="card1"):
     return {
         "id": action_id,
         "type": "commentCard",
         "memberCreator": {"id": member_id, "fullName": "Jamie"},
         "data": {
-            "card": {"name": card_name, "shortLink": short_link},
+            "card": {"id": card_id, "name": card_name, "shortLink": short_link},
             "text": comment_text,
         },
     }
@@ -38,7 +38,7 @@ def test_comment_by_another_member_notifies():
     assert "Jamie" in discord.sent[0]
 
 
-def test_comment_by_self_is_suppressed():
+def test_comment_by_self_also_notifies():
     trello = FakeTrelloClient(
         cards=[],
         actions=[comment_card_action("action1", member_id="self-member")],
@@ -49,7 +49,7 @@ def test_comment_by_self_is_suppressed():
 
     run(trello, discord, state, now=NOW)
 
-    assert discord.sent == []
+    assert len(discord.sent) == 1
 
 
 def test_action_cursor_is_shared_across_logged_event_types():
