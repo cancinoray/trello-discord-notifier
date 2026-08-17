@@ -18,7 +18,7 @@ class FakeTrelloClient:
         return self._self_member_id
 
 
-class FakeTelegramClient:
+class FakeDiscordClient:
     def __init__(self):
         self.sent = []
 

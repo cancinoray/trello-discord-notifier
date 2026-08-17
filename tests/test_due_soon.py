@@ -1,8 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from trello_telegram_notifier import run
-from tests.fakes import FakeTrelloClient, FakeTelegramClient
+from trello_discord_notifier import run
+from tests.fakes import FakeTrelloClient, FakeDiscordClient
 
 TZ = ZoneInfo("Asia/Manila")
 
@@ -13,14 +13,14 @@ def test_checkpoint_fires_when_in_window_and_not_already_sent():
     trello = FakeTrelloClient(cards=[
         {"id": "card1", "name": "Ship report", "due": due.isoformat(), "dueComplete": False, "shortUrl": "https://trello.com/c/card1"},
     ])
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {}
 
-    run(trello, telegram, state, now=now)
+    run(trello, discord, state, now=now)
 
-    assert len(telegram.sent) == 1
-    assert "Ship report" in telegram.sent[0]
-    assert "Due tomorrow" in telegram.sent[0]
+    assert len(discord.sent) == 1
+    assert "Ship report" in discord.sent[0]
+    assert "Due tomorrow" in discord.sent[0]
 
 
 def test_checkpoint_does_not_refire_if_already_sent():
@@ -29,12 +29,12 @@ def test_checkpoint_does_not_refire_if_already_sent():
     trello = FakeTrelloClient(cards=[
         {"id": "card1", "name": "Ship report", "due": due.isoformat(), "dueComplete": False, "shortUrl": "https://trello.com/c/card1"},
     ])
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {"cards": {"card1": {"day_before_8am": True}}}
 
-    run(trello, telegram, state, now=now)
+    run(trello, discord, state, now=now)
 
-    assert telegram.sent == []
+    assert discord.sent == []
 
 
 def test_checkpoint_does_not_fire_outside_firing_window():
@@ -43,20 +43,20 @@ def test_checkpoint_does_not_fire_outside_firing_window():
     trello = FakeTrelloClient(cards=[
         {"id": "card1", "name": "Ship report", "due": due.isoformat(), "dueComplete": False, "shortUrl": "https://trello.com/c/card1"},
     ])
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {}
 
-    run(trello, telegram, state, now=now)
+    run(trello, discord, state, now=now)
 
-    assert telegram.sent == []
+    assert discord.sent == []
 
 
 def test_state_pruned_for_cards_no_longer_open_or_due():
     now = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
     trello = FakeTrelloClient(cards=[])  # card1 completed/archived/removed
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {"cards": {"card1": {"day_before_8am": True}}}
 
-    run(trello, telegram, state, now=now)
+    run(trello, discord, state, now=now)
 
     assert "card1" not in state["cards"]

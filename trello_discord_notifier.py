@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Trello -> Telegram deadline notifier.
+Trello -> Discord deadline notifier.
 
-Sends a Telegram message for each Trello card with a due date at three
+Sends a Discord message for each Trello card with a due date at three
 checkpoints:
   - 1 day before, at 08:00 local time
   - Same day, at 08:00 local time (skipped if the deadline itself is before 8am)
@@ -75,16 +75,14 @@ class TrelloClient:
         return list(reversed(resp.json()))  # Trello returns newest first
 
 
-class TelegramClient:
-    def __init__(self, bot_token, chat_id):
-        self._bot_token = bot_token
-        self._chat_id = chat_id
+class DiscordClient:
+    def __init__(self, webhook_url):
+        self._webhook_url = webhook_url
 
     def send(self, text):
-        url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
         resp = requests.post(
-            url,
-            data={"chat_id": self._chat_id, "text": text, "parse_mode": "HTML"},
+            self._webhook_url,
+            json={"content": text},
             timeout=15,
         )
         resp.raise_for_status()
@@ -117,7 +115,7 @@ def checkpoints_for_due(due_local):
     return cps
 
 
-def _process_due_soon(trello, telegram, state, now):
+def _process_due_soon(trello, discord, state, now):
     cards = trello.fetch_due_cards()
     current_ids = {c["id"] for c in cards}
     sent = 0
@@ -133,12 +131,12 @@ def _process_due_soon(trello, telegram, state, now):
             in_window = cp_time <= now < cp_time + timedelta(minutes=WINDOW_MINUTES)
             if in_window and not already_sent:
                 text = (
-                    f"⏰ <b>{LABELS[key]}</b>\n"
+                    f"⏰ **{LABELS[key]}**\n"
                     f"{card['name']}\n"
                     f"Due: {due_local.strftime('%b %d, %I:%M %p')}\n"
                     f"{card['shortUrl']}"
                 )
-                telegram.send(text)
+                discord.send(text)
                 card_state[key] = True
                 sent += 1
 
@@ -150,7 +148,7 @@ def _process_due_soon(trello, telegram, state, now):
     return sent
 
 
-def _process_logged_events(trello, telegram, state, self_member_id, now):
+def _process_logged_events(trello, discord, state, self_member_id, now):
     is_first_run = "action_cursor" not in state
     cursor = state.get("action_cursor")
     actions = trello.fetch_actions_since(cursor)
@@ -169,11 +167,11 @@ def _process_logged_events(trello, telegram, state, self_member_id, now):
             card = action["data"]["card"]
             if action["type"] == "createCard":
                 text = (
-                    f"🆕 <b>Card created</b>\n"
+                    f"🆕 **Card created**\n"
                     f"{card['name']}\n"
                     f"https://trello.com/c/{card['shortLink']}"
                 )
-                telegram.send(text)
+                discord.send(text)
                 sent += 1
             elif (
                 action["type"] == "updateCard"
@@ -183,22 +181,22 @@ def _process_logged_events(trello, telegram, state, self_member_id, now):
                 list_before = action["data"]["listBefore"]["name"]
                 list_after = action["data"]["listAfter"]["name"]
                 text = (
-                    f"➡️ <b>Card moved</b>\n"
+                    f"➡️ **Card moved**\n"
                     f"{card['name']}\n"
                     f"{list_before} → {list_after}\n"
                     f"https://trello.com/c/{card['shortLink']}"
                 )
-                telegram.send(text)
+                discord.send(text)
                 sent += 1
             elif action["type"] == "commentCard":
                 commenter = action["memberCreator"]["fullName"]
                 text = (
-                    f"💬 <b>New comment</b>\n"
+                    f"💬 **New comment**\n"
                     f"{card['name']}\n"
                     f"{commenter}: {action['data']['text']}\n"
                     f"https://trello.com/c/{card['shortLink']}"
                 )
-                telegram.send(text)
+                discord.send(text)
                 sent += 1
 
     if actions:
@@ -207,7 +205,7 @@ def _process_logged_events(trello, telegram, state, self_member_id, now):
     return sent
 
 
-def run(trello, telegram, state, now=None):
+def run(trello, discord, state, now=None):
     """Orchestrate a single check: due-soon reminders plus board-activity notifications."""
     if now is None:
         now = datetime.now(TZ)
@@ -215,8 +213,8 @@ def run(trello, telegram, state, now=None):
     self_member_id = trello.fetch_self_member_id()
     state["self_member_id"] = self_member_id
 
-    sent = _process_due_soon(trello, telegram, state, now)
-    sent += _process_logged_events(trello, telegram, state, self_member_id, now)
+    sent = _process_due_soon(trello, discord, state, now)
+    sent += _process_logged_events(trello, discord, state, self_member_id, now)
 
     return sent
 
@@ -227,13 +225,12 @@ def main():
         token=os.environ["TRELLO_TOKEN"],
         board_id=os.environ["TRELLO_BOARD_ID"],
     )
-    telegram = TelegramClient(
-        bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
-        chat_id=os.environ["TELEGRAM_CHAT_ID"],
+    discord = DiscordClient(
+        webhook_url=os.environ["DISCORD_WEBHOOK_URL"],
     )
     state = load_state()
 
-    sent = run(trello, telegram, state)
+    sent = run(trello, discord, state)
 
     save_state(state)
     print(f"Sent {sent} notification(s).")

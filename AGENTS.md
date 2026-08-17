@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as GitHub issues in `cancinoray/trello-telegram-notifier` (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
+Issues live as GitHub issues in `cancinoray/trello-discord-notifier` (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

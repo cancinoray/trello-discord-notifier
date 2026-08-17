@@ -1,4 +1,4 @@
-name: Trello Deadline Notifier
+name: Trello Discord Notifier
 
 on:
   schedule:
@@ -16,21 +16,20 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
-        with:
-          python-version: "3.11"
 
       - name: Install dependencies
         run: uv sync
+        env:
+          UV_PYTHON: "3.11"
 
       - name: Run notifier
         env:
           TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
           TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
           TRELLO_BOARD_ID: ${{ secrets.TRELLO_BOARD_ID }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           TZ_NAME: "Asia/Manila"
-        run: uv run trello_telegram_notifier.py
+        run: uv run trello_discord_notifier.py
 
       - name: Commit updated state
         run: |

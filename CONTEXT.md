@@ -1,6 +1,6 @@
-# Trello-Telegram Notifier
+# Trello-Discord Notifier
 
-Watches a single Trello board and sends Telegram messages when things worth noticing happen on it — deadlines approaching and board activity occurring.
+Watches a single Trello board and sends Discord messages when things worth noticing happen on it — deadlines approaching and board activity occurring.
 
 ## Language
 

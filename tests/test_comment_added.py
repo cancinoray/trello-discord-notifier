@@ -1,8 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from trello_telegram_notifier import run
-from tests.fakes import FakeTrelloClient, FakeTelegramClient
+from trello_discord_notifier import run
+from tests.fakes import FakeTrelloClient, FakeDiscordClient
 
 TZ = ZoneInfo("Asia/Manila")
 NOW = datetime(2026, 8, 13, 8, 5, tzinfo=TZ)
@@ -27,15 +27,15 @@ def test_comment_by_another_member_notifies():
         actions=[comment_card_action("action1", member_id="other-member")],
         self_member_id="self-member",
     )
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {"action_cursor": "action0"}  # simulate a prior run already seeded the cursor
 
-    run(trello, telegram, state, now=NOW)
+    run(trello, discord, state, now=NOW)
 
-    assert len(telegram.sent) == 1
-    assert "Ship report" in telegram.sent[0]
-    assert "Looks good to me" in telegram.sent[0]
-    assert "Jamie" in telegram.sent[0]
+    assert len(discord.sent) == 1
+    assert "Ship report" in discord.sent[0]
+    assert "Looks good to me" in discord.sent[0]
+    assert "Jamie" in discord.sent[0]
 
 
 def test_comment_by_self_is_suppressed():
@@ -44,12 +44,12 @@ def test_comment_by_self_is_suppressed():
         actions=[comment_card_action("action1", member_id="self-member")],
         self_member_id="self-member",
     )
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {"action_cursor": "action0"}
 
-    run(trello, telegram, state, now=NOW)
+    run(trello, discord, state, now=NOW)
 
-    assert telegram.sent == []
+    assert discord.sent == []
 
 
 def test_action_cursor_is_shared_across_logged_event_types():
@@ -65,12 +65,12 @@ def test_action_cursor_is_shared_across_logged_event_types():
         ],
         self_member_id="self-member",
     )
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {"action_cursor": "action0"}
 
-    run(trello, telegram, state, now=NOW)
+    run(trello, discord, state, now=NOW)
 
-    assert len(telegram.sent) == 3
+    assert len(discord.sent) == 3
     assert state["action_cursor"] == "action3"
 
 
@@ -80,9 +80,9 @@ def test_already_processed_comment_action_is_not_renotified():
         actions=[comment_card_action("action1", member_id="other-member")],
         self_member_id="self-member",
     )
-    telegram = FakeTelegramClient()
+    discord = FakeDiscordClient()
     state = {"action_cursor": "action1"}
 
-    run(trello, telegram, state, now=NOW)
+    run(trello, discord, state, now=NOW)
 
-    assert telegram.sent == []
+    assert discord.sent == []
